@@ -155,3 +155,4 @@ C:\Users\Natalia\ConstructionCompany.API\ConstructionCompany.API\bin\Debug\net9.
 C:\Users\Natalia\ConstructionCompany.API\ConstructionCompany.API\obj\Debug\net9.0\ConstructionCompany.API.MvcApplicationPartsAssemblyInfo.cs
 C:\Users\Natalia\ConstructionCompany.API\ConstructionCompany.API\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 C:\Users\Natalia\ConstructionCompany.API\ConstructionCompany.API\bin\Debug\net9.0\Microsoft.AspNetCore.Identity.EntityFrameworkCore.dll
+C:\Users\Natalia\ConstructionCompany.API\ConstructionCompany.API\obj\Debug\net9.0\ConstructionCompany.API.sourcelink.json

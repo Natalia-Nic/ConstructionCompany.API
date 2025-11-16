@@ -1,29 +1,36 @@
 // Controllers/ApplicationsController.cs
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using ConstructionCompany.API.Data;
 using ConstructionCompany.API.Models;
+using System.Security.Claims;
 
 namespace ConstructionCompany.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ApplicationsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly UserManager<User> _userManager;
 
-        public ApplicationsController(ApplicationDbContext context)
+        public ApplicationsController(ApplicationDbContext context, UserManager<User> userManager)
         {
             _context = context;
+            _userManager = userManager;
         }
 
-        // GET: api/applications - все заявки (для подрядчика) - ОБНОВЛЕННЫЙ МЕТОД!
+        // GET: api/applications - все заявки (для подрядчика)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Application>>> GetAllApplications()
         {
             var applications = await _context.Applications
                 .Include(a => a.Project)
                 .Include(a => a.Client)
+                .OrderByDescending(a => a.CreatedAt)
                 .ToListAsync();
 
             return applications;
@@ -33,9 +40,14 @@ namespace ConstructionCompany.API.Controllers
         [HttpGet("my")]
         public async Task<ActionResult<IEnumerable<Application>>> GetMyApplications()
         {
-            // Временная реализация - возвращаем все заявки
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
             var applications = await _context.Applications
                 .Include(a => a.Project)
+                .Where(a => a.ClientId == userId)
+                .OrderByDescending(a => a.CreatedAt)
                 .ToListAsync();
 
             return applications;
@@ -47,17 +59,21 @@ namespace ConstructionCompany.API.Controllers
         {
             try
             {
-                // Найдем первого пользователя в базе (тестового пользователя)
-                var existingUser = await _context.Users.FirstOrDefaultAsync();
-                if (existingUser == null)
-                {
-                    return BadRequest("No users found in database. Please create a test user first.");
-                }
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized("Пользователь не авторизован");
 
-                // Создаем заявку с ID существующего пользователя
+                var project = await _context.Projects.FindAsync(request.ProjectId);
+                if (project == null)
+                    return BadRequest("Проект не найден");
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return BadRequest("Пользователь не найден");
+
                 var application = new Application
                 {
-                    ClientId = existingUser.Id,
+                    ClientId = userId,
                     ProjectId = request.ProjectId,
                     Status = "Pending",
                     ClientComments = request.ClientComments,
@@ -86,6 +102,7 @@ namespace ConstructionCompany.API.Controllers
         {
             var application = await _context.Applications
                 .Include(a => a.Project)
+                .Include(a => a.Client)
                 .FirstOrDefaultAsync(a => a.Id == id);
 
             if (application == null) return NotFound();
@@ -97,10 +114,13 @@ namespace ConstructionCompany.API.Controllers
         [HttpPut("{id}")]
         public async Task<ActionResult<Application>> UpdateApplication(int id, [FromBody] Application updates)
         {
-            var application = await _context.Applications.FindAsync(id);
+            var application = await _context.Applications
+                .Include(a => a.Project)
+                .Include(a => a.Client)
+                .FirstOrDefaultAsync(a => a.Id == id);
+                
             if (application == null) return NotFound();
 
-            // Обновляем только разрешенные поля
             if (!string.IsNullOrEmpty(updates.Status))
                 application.Status = updates.Status;
             
@@ -113,5 +133,40 @@ namespace ConstructionCompany.API.Controllers
 
             return application;
         }
+
+        // PUT: api/applications/5/status - сменить статус
+        [HttpPut("{id}/status")]
+        public async Task<ActionResult> UpdateStatus(int id, [FromBody] UpdateStatusRequest request)
+        {
+            var application = await _context.Applications
+                .Include(a => a.Project)
+                .Include(a => a.Client)
+                .FirstOrDefaultAsync(a => a.Id == id);
+                
+            if (application == null) 
+                return NotFound("Заявка не найдена");
+
+            application.Status = request.NewStatus;
+            application.UpdatedAt = DateTime.UtcNow;
+            
+            await _context.SaveChangesAsync();
+            
+            return Ok(new { 
+                message = "Статус обновлен", 
+                status = request.NewStatus,
+                applicationId = id 
+            });
+        }
+    }
+
+    public class CreateApplicationRequest
+    {
+        public int ProjectId { get; set; }
+        public string? ClientComments { get; set; }
+    }
+
+    public class UpdateStatusRequest
+    {
+        public string NewStatus { get; set; } = string.Empty;
     }
 }
